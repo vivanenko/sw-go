@@ -1,0 +1,4 @@
+BEGIN;
+DROP TABLE account;
+DROP EXTENSION citext;
+COMMIT;
