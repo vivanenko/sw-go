@@ -10,6 +10,7 @@ import (
 	"sw/internal/identity/crypto"
 	"sw/internal/identity/email/confirmation"
 	"sw/internal/logging"
+	"sw/internal/random"
 	"time"
 )
 
@@ -49,6 +50,11 @@ type CommandHandler struct {
 	emailer      email.Emailer
 }
 
+type Command struct {
+	Email    string
+	Password string
+}
+
 func NewCommandHandler(
 	db *sql.DB,
 	hasher crypto.Hasher,
@@ -65,18 +71,18 @@ func (h *CommandHandler) Execute(cmd Command) error {
 	}
 
 	query := "INSERT INTO account VALUES (DEFAULT, $1, $2, $3, $4) RETURNING id"
-	_, err = h.db.Exec(
-		query,
-		cmd.Email,
-		false,
-		passwordHash,
-		time.Now().UTC(),
-	)
+	var id int64
+	err = h.db.QueryRow(query, cmd.Email, false, passwordHash, time.Now().UTC()).Scan(&id)
 	if err != nil {
 		return err
 	}
-	// todo: generate token & use transaction for token insert
-	token := "some-test-token"
+
+	token := random.String(64)
+	query = "INSERT INTO email_confirmation_token VALUES (DEFAULT, $1, $2, $3)"
+	_, err = h.db.Exec(query, token, time.Now().UTC(), id)
+	if err != nil {
+		return err
+	}
 	ctx := email.Context[confirmation.Data]{To: cmd.Email, Data: confirmation.Data{ConfirmationToken: token}}
 	e, err := h.emailFactory.Create(ctx)
 	if err != nil {
@@ -84,9 +90,4 @@ func (h *CommandHandler) Execute(cmd Command) error {
 	}
 	err = h.emailer.Send(e)
 	return err
-}
-
-type Command struct {
-	Email    string
-	Password string
 }
