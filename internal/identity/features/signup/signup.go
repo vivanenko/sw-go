@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"net/http"
 	"sw/internal/cqrs"
+	"sw/internal/email"
 	"sw/internal/encoding"
 	"sw/internal/httpext"
 	"sw/internal/identity/crypto"
+	"sw/internal/identity/email/confirmation"
 	"sw/internal/logging"
 	"time"
 )
@@ -16,7 +18,7 @@ type request struct {
 	Password string `json:"password" validate:"required,min=8,max=64"`
 }
 
-func Handler(
+func NewHandler(
 	logger logging.Logger,
 	decoder encoding.Decoder,
 	encoder encoding.Encoder,
@@ -41,12 +43,19 @@ func Handler(
 }
 
 type CommandHandler struct {
-	db     *sql.DB
-	hasher crypto.Hasher
+	db           *sql.DB
+	hasher       crypto.Hasher
+	emailFactory email.Factory[confirmation.Data]
+	emailer      email.Emailer
 }
 
-func NewCommandHandler(db *sql.DB, hasher crypto.Hasher) *CommandHandler {
-	return &CommandHandler{db: db, hasher: hasher}
+func NewCommandHandler(
+	db *sql.DB,
+	hasher crypto.Hasher,
+	emailFactory email.Factory[confirmation.Data],
+	emailer email.Emailer,
+) *CommandHandler {
+	return &CommandHandler{db: db, hasher: hasher, emailFactory: emailFactory, emailer: emailer}
 }
 
 func (h *CommandHandler) Execute(cmd Command) error {
@@ -63,6 +72,17 @@ func (h *CommandHandler) Execute(cmd Command) error {
 		passwordHash,
 		time.Now().UTC(),
 	)
+	if err != nil {
+		return err
+	}
+	// todo: generate token & use transaction for token insert
+	token := "some-test-token"
+	ctx := email.Context[confirmation.Data]{To: cmd.Email, Data: confirmation.Data{ConfirmationToken: token}}
+	e, err := h.emailFactory.Create(ctx)
+	if err != nil {
+		return err
+	}
+	err = h.emailer.Send(e)
 	return err
 }
 

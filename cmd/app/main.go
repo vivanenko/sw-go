@@ -12,8 +12,10 @@ import (
 	"net/http"
 	"os"
 	"sw/config"
+	"sw/internal/email/console"
 	"sw/internal/encoding/json"
 	"sw/internal/identity/crypto"
+	"sw/internal/identity/email/confirmation"
 	"sw/internal/identity/features/signup"
 	"sw/internal/identity/infrastructure/postgresql"
 	iv "sw/internal/identity/validation"
@@ -54,10 +56,12 @@ func main() {
 	encoder := json.NewEncoder()
 	decoder := json.NewDecoder(defaultValidator)
 	hasher := crypto.NewDefaultHasher()
-	signUpCmdHandler := signup.NewCommandHandler(db, hasher)
+	emailFactory := confirmation.NewFactory()
+	emailer := console.NewEmailer()
+	signUpCmdHandler := signup.NewCommandHandler(db, hasher, emailFactory, emailer)
 
 	router := http.NewServeMux()
-	router.HandleFunc("POST /signup", signup.Handler(logger, decoder, encoder, signUpCmdHandler))
+	router.HandleFunc("POST /signup", signup.NewHandler(logger, decoder, encoder, signUpCmdHandler))
 	err = http.ListenAndServe(":3000", router)
 	if err != nil {
 		logger.Fatal(err)
