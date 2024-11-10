@@ -2,38 +2,37 @@ package signup
 
 import (
 	"database/sql"
+	"errors"
 	"net/http"
 	"sw/internal/cqrs"
 	"sw/internal/email"
 	"sw/internal/encoding"
 	"sw/internal/httpext"
-	"sw/internal/identity/crypto"
 	"sw/internal/identity/email/confirmation"
 	"sw/internal/logging"
 	"sw/internal/random"
 	"time"
 )
 
-type signUpRequest struct {
-	Email    string `json:"email" validate:"required,max=320,email,not_exist"`
-	Password string `json:"password" validate:"required,min=8,max=64"`
+type resendEmailConfirmationRequest struct {
+	Email string `json:"email" validate:"required,max=320,email,exists"`
 }
 
-func NewSignUpHandler(
+func NewResendEmailConfirmationHandler(
 	logger logging.Logger,
 	decoder encoding.Decoder,
 	encoder encoding.Encoder,
-	cmdHandler cqrs.CommandHandler[SignUpCommand],
+	cmdHandler cqrs.CommandHandler[ResendEmailConfirmationCommand],
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var request signUpRequest
+		var request resendEmailConfirmationRequest
 		err := decoder.Decode(r.Body, &request)
 		if err != nil {
 			httpext.BadRequest(w, encoder, err)
 			return
 		}
 
-		cmd := SignUpCommand{Email: request.Email, Password: request.Password}
+		cmd := ResendEmailConfirmationCommand{Email: request.Email}
 		err = cmdHandler.Execute(cmd)
 		if err != nil {
 			logger.Println(err)
@@ -43,38 +42,34 @@ func NewSignUpHandler(
 	}
 }
 
-type SignUpCommandHandler struct {
+type ResendEmailConfirmationCommandHandler struct {
 	db           *sql.DB
-	hasher       crypto.Hasher
 	emailFactory email.Factory[confirmation.Data]
 	emailer      email.Emailer
 }
 
-type SignUpCommand struct {
-	Email    string
-	Password string
+type ResendEmailConfirmationCommand struct {
+	Email string
 }
 
-func NewSignUpCommandHandler(
+func NewResendEmailConfirmationCommandHandler(
 	db *sql.DB,
-	hasher crypto.Hasher,
 	emailFactory email.Factory[confirmation.Data],
 	emailer email.Emailer,
-) *SignUpCommandHandler {
-	return &SignUpCommandHandler{db: db, hasher: hasher, emailFactory: emailFactory, emailer: emailer}
+) *ResendEmailConfirmationCommandHandler {
+	return &ResendEmailConfirmationCommandHandler{db: db, emailFactory: emailFactory, emailer: emailer}
 }
 
-func (h *SignUpCommandHandler) Execute(cmd SignUpCommand) error {
-	passwordHash, err := h.hasher.Hash(cmd.Password)
+func (h *ResendEmailConfirmationCommandHandler) Execute(cmd ResendEmailConfirmationCommand) error {
+	query := "SELECT id, email_confirmed FROM account WHERE email = $1"
+	var id int64
+	var emailConfirmed bool
+	err := h.db.QueryRow(query, cmd.Email).Scan(&id, &emailConfirmed)
 	if err != nil {
 		return err
 	}
-
-	query := "INSERT INTO account VALUES (DEFAULT, $1, $2, $3, $4) RETURNING id"
-	var id int64
-	err = h.db.QueryRow(query, cmd.Email, false, passwordHash, time.Now().UTC()).Scan(&id)
-	if err != nil {
-		return err
+	if emailConfirmed {
+		return errors.New("email is already confirmed")
 	}
 
 	token := random.String(64)

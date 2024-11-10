@@ -48,6 +48,10 @@ func main() {
 	}(db)
 	accountRepository := postgresql.NewPgAccountRepository(db)
 	validate := validator.New()
+	err = validate.RegisterValidation("not_exist", iv.NewAccountNotExistValidator(accountRepository))
+	if err != nil {
+		logger.Fatal(err)
+	}
 	err = validate.RegisterValidation("exists", iv.NewAccountExistsValidator(accountRepository))
 	if err != nil {
 		logger.Fatal(err)
@@ -58,10 +62,13 @@ func main() {
 	hasher := crypto.NewDefaultHasher()
 	emailFactory := confirmation.NewFactory()
 	emailer := console.NewEmailer()
-	signUpCmdHandler := signup.NewCommandHandler(db, hasher, emailFactory, emailer)
+	signUpCmdHandler := signup.NewSignUpCommandHandler(db, hasher, emailFactory, emailer)
+	resendEmailConfirmationCmdHandler := signup.NewResendEmailConfirmationCommandHandler(db, emailFactory, emailer)
 
 	router := http.NewServeMux()
-	router.HandleFunc("POST /signup", signup.NewHandler(logger, decoder, encoder, signUpCmdHandler))
+	router.HandleFunc("POST /signup", signup.NewSignUpHandler(logger, decoder, encoder, signUpCmdHandler))
+	router.HandleFunc("POST /resend-email-confirmation",
+		signup.NewResendEmailConfirmationHandler(logger, decoder, encoder, resendEmailConfirmationCmdHandler))
 	err = http.ListenAndServe(":3000", router)
 	if err != nil {
 		logger.Fatal(err)
