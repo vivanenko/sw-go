@@ -17,6 +17,7 @@ import (
 	"sw/internal/identity/features/signup"
 	"sw/internal/identity/infrastructure/postgresql"
 	iv "sw/internal/identity/validation"
+	"sw/internal/logging"
 	"sw/internal/validation"
 )
 
@@ -32,22 +33,22 @@ func main() {
 	//if err != nil {
 	//	log.Fatal(err)
 	//}
-
-	db, err := prepareDatabase(connectionString, migrationsSrc)
+	logger := log.Default()
+	db, err := prepareDatabase(connectionString, migrationsSrc, logger)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	defer func(db *sql.DB) {
 		err := db.Close()
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 	}(db)
 	accountRepository := postgresql.NewPgAccountRepository(db)
 	validate := validator.New()
 	err = validate.RegisterValidation("exists", iv.NewAccountExistsValidator(accountRepository))
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	defaultValidator := validation.NewDefaultValidator(validate)
 	encoder := json.NewEncoder()
@@ -56,10 +57,10 @@ func main() {
 	signUpCmdHandler := signup.NewCommandHandler(db, hasher)
 
 	router := http.NewServeMux()
-	router.HandleFunc("POST /signup", signup.Handler(decoder, encoder, signUpCmdHandler))
+	router.HandleFunc("POST /signup", signup.Handler(logger, decoder, encoder, signUpCmdHandler))
 	err = http.ListenAndServe(":3000", router)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 }
 
@@ -85,7 +86,7 @@ func getConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
-func prepareDatabase(connectionString string, migrationsSrc string) (*sql.DB, error) {
+func prepareDatabase(connectionString string, migrationsSrc string, logger logging.Logger) (*sql.DB, error) {
 	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
 		return nil, err
@@ -98,7 +99,7 @@ func prepareDatabase(connectionString string, migrationsSrc string) (*sql.DB, er
 	err = m.Up()
 	if err != nil {
 		if err == migrate.ErrNoChange {
-			log.Println("Migrate: The database is up to date.")
+			logger.Println("Migrate: The database is up to date.")
 		} else {
 			return nil, err
 		}

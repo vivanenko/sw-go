@@ -2,12 +2,12 @@ package signup
 
 import (
 	"database/sql"
-	"log"
 	"net/http"
 	"sw/internal/cqrs"
 	"sw/internal/encoding"
 	"sw/internal/httpext"
 	"sw/internal/identity/crypto"
+	"sw/internal/logging"
 	"time"
 )
 
@@ -17,6 +17,7 @@ type request struct {
 }
 
 func Handler(
+	logger logging.Logger,
 	decoder encoding.Decoder,
 	encoder encoding.Encoder,
 	cmdHandler cqrs.CommandHandler[Command],
@@ -32,7 +33,7 @@ func Handler(
 		cmd := Command{Email: request.Email, Password: request.Password}
 		err = cmdHandler.Execute(cmd)
 		if err != nil {
-			log.Println(err)
+			logger.Println(err)
 			http.Error(w, httpext.InternalServerError, http.StatusInternalServerError)
 			return
 		}
