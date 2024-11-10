@@ -2,7 +2,7 @@ package main
 
 import (
 	"database/sql"
-	v "github.com/go-playground/validator/v10"
+	"github.com/go-playground/validator/v10"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -13,8 +13,10 @@ import (
 	"os"
 	"sw/config"
 	"sw/internal/encoding/json"
+	"sw/internal/identity/crypto"
+	"sw/internal/identity/features/signup"
 	"sw/internal/identity/infrastructure/postgresql"
-	"sw/internal/identity/signup"
+	iv "sw/internal/identity/validation"
 	"sw/internal/validation"
 )
 
@@ -42,22 +44,16 @@ func main() {
 		}
 	}(db)
 	accountRepository := postgresql.NewPgAccountRepository(db)
-	validate := v.New()
-	err = validate.RegisterValidation("exists", func(fl v.FieldLevel) bool {
-		email := fl.Field().Interface().(string)
-		exists, err := accountRepository.Exists(email)
-		if err != nil {
-			log.Print(err)
-		}
-		return !exists
-	})
+	validate := validator.New()
+	err = validate.RegisterValidation("exists", iv.NewAccountExistsValidator(accountRepository))
 	if err != nil {
 		log.Fatal(err)
 	}
-	validator := validation.NewDefaultValidator(validate)
+	defaultValidator := validation.NewDefaultValidator(validate)
 	encoder := json.NewEncoder()
-	decoder := json.NewDecoder(validator)
-	signUpCmdHandler := signup.NewCommandHandler(db)
+	decoder := json.NewDecoder(defaultValidator)
+	hasher := crypto.NewDefaultHasher()
+	signUpCmdHandler := signup.NewCommandHandler(db, hasher)
 
 	router := http.NewServeMux()
 	router.HandleFunc("POST /signup", signup.Handler(decoder, encoder, signUpCmdHandler))
