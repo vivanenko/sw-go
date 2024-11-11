@@ -25,18 +25,17 @@ func NewSignUpHandler(
 	cmdHandler cqrs.CommandHandler[SignUpCommand],
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		wrapper := httpext.NewWrapper(w, r, logger, decoder, encoder)
 		var request signUpRequest
-		err := decoder.Decode(r.Body, &request)
+		err := wrapper.Bind(&request)
 		if err != nil {
-			httpext.BadRequest(w, encoder, err)
 			return
 		}
 
 		cmd := SignUpCommand{Email: request.Email, Password: request.Password}
 		err = cmdHandler.Execute(cmd)
 		if err != nil {
-			logger.Println(err)
-			http.Error(w, httpext.InternalServerError, http.StatusInternalServerError)
+			wrapper.InternalServerError(err)
 			return
 		}
 	}

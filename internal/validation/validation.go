@@ -19,7 +19,7 @@ func (e Error) Error() string {
 
 type FieldError struct {
 	Path      string `json:"path"`
-	Reason    string `json:"reason"`
+	Validator string `json:"validator"`
 	Parameter string `json:"parameter"`
 }
 
@@ -40,7 +40,7 @@ func (r DefaultValidator) Validate(i interface{}) error {
 			ns := err.Namespace()
 			tag := err.Tag()
 			param := err.Param()
-			fields = append(fields, FieldError{Path: ns, Reason: tag, Parameter: param})
+			fields = append(fields, FieldError{Path: ns, Validator: tag, Parameter: param})
 		}
 		return Error{Fields: fields}
 	}
