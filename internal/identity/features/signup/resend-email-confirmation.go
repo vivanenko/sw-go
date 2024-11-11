@@ -26,6 +26,7 @@ func NewResendEmailConfirmationHandler(
 		var request resendEmailConfirmationRequest
 		err := wrapper.Bind(&request)
 		if err != nil {
+			wrapper.BadRequest(err)
 			return
 		}
 

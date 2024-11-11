@@ -1,7 +1,6 @@
 package httpext
 
 import (
-	"errors"
 	"net/http"
 	"sw/internal/encoding"
 	"sw/internal/logging"
@@ -26,12 +25,7 @@ func NewWrapper(
 }
 
 func (w *Wrapper) Bind(model interface{}) error {
-	err := w.decoder.Decode(w.r.Body, model)
-	if err != nil {
-		w.BadRequest(err)
-		return errors.New("model binding was failed")
-	}
-	return nil
+	return w.decoder.Decode(w.r.Body, model)
 }
 
 func (w *Wrapper) BadRequest(err error) {
