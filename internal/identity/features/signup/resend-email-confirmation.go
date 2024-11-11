@@ -2,16 +2,13 @@ package signup
 
 import (
 	"database/sql"
-	"errors"
 	"net/http"
 	"sw/internal/cqrs"
-	"sw/internal/email"
 	"sw/internal/encoding"
 	"sw/internal/httpext"
-	"sw/internal/identity/email/confirmation"
+	"sw/internal/identity/mail/confirmation"
 	"sw/internal/logging"
-	"sw/internal/random"
-	"time"
+	"sw/internal/mail"
 )
 
 type resendEmailConfirmationRequest struct {
@@ -44,8 +41,8 @@ func NewResendEmailConfirmationHandler(
 
 type ResendEmailConfirmationCommandHandler struct {
 	db           *sql.DB
-	emailFactory email.Factory[confirmation.Data]
-	emailer      email.Emailer
+	emailFactory mail.Factory[confirmation.Data]
+	emailer      mail.Emailer
 }
 
 type ResendEmailConfirmationCommand struct {
@@ -54,8 +51,8 @@ type ResendEmailConfirmationCommand struct {
 
 func NewResendEmailConfirmationCommandHandler(
 	db *sql.DB,
-	emailFactory email.Factory[confirmation.Data],
-	emailer email.Emailer,
+	emailFactory mail.Factory[confirmation.Data],
+	emailer mail.Emailer,
 ) *ResendEmailConfirmationCommandHandler {
 	return &ResendEmailConfirmationCommandHandler{db: db, emailFactory: emailFactory, emailer: emailer}
 }
@@ -69,20 +66,8 @@ func (h *ResendEmailConfirmationCommandHandler) Execute(cmd ResendEmailConfirmat
 		return err
 	}
 	if emailConfirmed {
-		return errors.New("email is already confirmed")
+		return nil
 	}
-
-	token := random.String(64)
-	query = "INSERT INTO email_confirmation_token VALUES (DEFAULT, $1, $2, $3)"
-	_, err = h.db.Exec(query, token, time.Now().UTC(), id)
-	if err != nil {
-		return err
-	}
-	ctx := email.Context[confirmation.Data]{To: cmd.Email, Data: confirmation.Data{ConfirmationToken: token}}
-	e, err := h.emailFactory.Create(ctx)
-	if err != nil {
-		return err
-	}
-	err = h.emailer.Send(e)
+	err = sendConfirmationToken(h.db, h.emailFactory, h.emailer, id, cmd.Email)
 	return err
 }

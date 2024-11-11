@@ -4,13 +4,12 @@ import (
 	"database/sql"
 	"net/http"
 	"sw/internal/cqrs"
-	"sw/internal/email"
 	"sw/internal/encoding"
 	"sw/internal/httpext"
 	"sw/internal/identity/crypto"
-	"sw/internal/identity/email/confirmation"
+	"sw/internal/identity/mail/confirmation"
 	"sw/internal/logging"
-	"sw/internal/random"
+	"sw/internal/mail"
 	"time"
 )
 
@@ -46,8 +45,8 @@ func NewSignUpHandler(
 type SignUpCommandHandler struct {
 	db           *sql.DB
 	hasher       crypto.Hasher
-	emailFactory email.Factory[confirmation.Data]
-	emailer      email.Emailer
+	emailFactory mail.Factory[confirmation.Data]
+	emailer      mail.Emailer
 }
 
 type SignUpCommand struct {
@@ -58,8 +57,8 @@ type SignUpCommand struct {
 func NewSignUpCommandHandler(
 	db *sql.DB,
 	hasher crypto.Hasher,
-	emailFactory email.Factory[confirmation.Data],
-	emailer email.Emailer,
+	emailFactory mail.Factory[confirmation.Data],
+	emailer mail.Emailer,
 ) *SignUpCommandHandler {
 	return &SignUpCommandHandler{db: db, hasher: hasher, emailFactory: emailFactory, emailer: emailer}
 }
@@ -77,17 +76,6 @@ func (h *SignUpCommandHandler) Execute(cmd SignUpCommand) error {
 		return err
 	}
 
-	token := random.String(64)
-	query = "INSERT INTO email_confirmation_token VALUES (DEFAULT, $1, $2, $3)"
-	_, err = h.db.Exec(query, token, time.Now().UTC(), id)
-	if err != nil {
-		return err
-	}
-	ctx := email.Context[confirmation.Data]{To: cmd.Email, Data: confirmation.Data{ConfirmationToken: token}}
-	e, err := h.emailFactory.Create(ctx)
-	if err != nil {
-		return err
-	}
-	err = h.emailer.Send(e)
+	err = sendConfirmationToken(h.db, h.emailFactory, h.emailer, id, cmd.Email)
 	return err
 }

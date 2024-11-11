@@ -1,6 +1,6 @@
 package confirmation
 
-import "sw/internal/email"
+import "sw/internal/mail"
 
 type Data struct {
 	ConfirmationToken string
@@ -12,9 +12,9 @@ func NewFactory() *Factory {
 	return &Factory{}
 }
 
-func (f Factory) Create(ctx email.Context[Data]) (email.Email, error) {
+func (f Factory) Create(ctx mail.Context[Data]) (mail.Email, error) {
 	subject := "Email Confirmation"
 	link := "https://my-frontend/email-confirmation?token=" + ctx.Data.ConfirmationToken
 	body := "Follow the link to confirm your account: " + link
-	return email.Email{To: ctx.To, Subject: subject, PlainText: body}, nil
+	return mail.Email{To: ctx.To, Subject: subject, PlainText: body}, nil
 }

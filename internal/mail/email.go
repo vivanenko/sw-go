@@ -1,4 +1,4 @@
-package email
+package mail
 
 type Email struct {
 	To        string

@@ -12,14 +12,14 @@ import (
 	"net/http"
 	"os"
 	"sw/config"
-	"sw/internal/email/console"
 	"sw/internal/encoding/json"
 	"sw/internal/identity/crypto"
-	"sw/internal/identity/email/confirmation"
 	"sw/internal/identity/features/signup"
 	"sw/internal/identity/infrastructure/postgresql"
+	"sw/internal/identity/mail/confirmation"
 	iv "sw/internal/identity/validation"
 	"sw/internal/logging"
+	"sw/internal/mail/console"
 	"sw/internal/validation"
 )
 
