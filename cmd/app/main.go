@@ -65,6 +65,11 @@ func main() {
 	signUpCmdHandler := signup.NewSignUpCommandHandler(db, hasher, emailFactory, emailer)
 	resendEmailConfirmationCmdHandler := signup.NewResendEmailConfirmationCommandHandler(db, emailFactory, emailer)
 
+	// Jobs
+	confirmationsCleaner := signup.NewConfirmationsCleaner(db, logger)
+	go confirmationsCleaner.Clean()
+
+	// Web
 	router := http.NewServeMux()
 	router.HandleFunc("POST /signup", signup.NewSignUpHandler(logger, decoder, encoder, signUpCmdHandler))
 	router.HandleFunc("POST /resend-email-confirmation",
