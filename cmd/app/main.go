@@ -17,7 +17,7 @@ import (
 	"sw/internal/identity/features/signup"
 	"sw/internal/identity/infrastructure/postgresql"
 	"sw/internal/identity/mail/confirmation"
-	iv "sw/internal/identity/validation"
+	ivalidation "sw/internal/identity/validation"
 	"sw/internal/logging"
 	"sw/internal/mail/console"
 	"sw/internal/validation"
@@ -48,11 +48,11 @@ func main() {
 	}(db)
 	accountRepository := postgresql.NewPgAccountRepository(db)
 	validate := validator.New()
-	err = validate.RegisterValidation("not_exist", iv.NewAccountNotExistValidator(accountRepository))
+	err = validate.RegisterValidation("not_exist", ivalidation.NewAccountNotExistValidator(accountRepository))
 	if err != nil {
 		logger.Fatal(err)
 	}
-	err = validate.RegisterValidation("exists", iv.NewAccountExistsValidator(accountRepository))
+	err = validate.RegisterValidation("exists", ivalidation.NewAccountExistsValidator(accountRepository))
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -64,16 +64,19 @@ func main() {
 	emailer := console.NewEmailer()
 	signUpCmdHandler := signup.NewSignUpCommandHandler(db, hasher, emailFactory, emailer)
 	resendEmailConfirmationCmdHandler := signup.NewResendEmailConfirmationCommandHandler(db, emailFactory, emailer)
+	emailConfirmationCmdHandler := signup.NewEmailConfirmationCommandHandler(db)
 
 	// Jobs
-	confirmationsCleaner := signup.NewConfirmationsCleaner(db, logger)
-	go confirmationsCleaner.Clean()
+	//confirmationsCleaner := signup.NewConfirmationsCleaner(db, logger)
+	//go confirmationsCleaner.Clean()
 
 	// Web
 	router := http.NewServeMux()
 	router.HandleFunc("POST /signup", signup.NewSignUpHandler(logger, decoder, encoder, signUpCmdHandler))
 	router.HandleFunc("POST /resend-email-confirmation",
 		signup.NewResendEmailConfirmationHandler(logger, decoder, encoder, resendEmailConfirmationCmdHandler))
+	router.HandleFunc("POST /email-confirmation",
+		signup.NewEmailConfirmationHandler(logger, decoder, encoder, emailConfirmationCmdHandler))
 	err = http.ListenAndServe(":3000", router)
 	if err != nil {
 		logger.Fatal(err)

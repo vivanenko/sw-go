@@ -29,7 +29,7 @@ func NewSignUpHandler(
 		var request signUpRequest
 		err := wrapper.Bind(&request)
 		if err != nil {
-			wrapper.BadRequest(err)
+			wrapper.BadRequestErr(err)
 			return
 		}
 

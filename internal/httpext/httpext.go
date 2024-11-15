@@ -28,7 +28,11 @@ func (w *Wrapper) Bind(model interface{}) error {
 	return w.decoder.Decode(w.r.Body, model)
 }
 
-func (w *Wrapper) BadRequest(err error) {
+func (w *Wrapper) BadRequest() {
+	w.w.WriteHeader(http.StatusBadRequest)
+}
+
+func (w *Wrapper) BadRequestErr(err error) {
 	w.w.Header().Set("Content-Type", "application/json")
 	w.w.WriteHeader(http.StatusBadRequest)
 	bytes, err := w.encoder.Encode(err)
