@@ -22,9 +22,9 @@ func NewEmailConfirmationHandler(
 	cmdHandler cqrs.CommandHandler[EmailConfirmationCommand],
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		wrapper := httpext.NewWrapper(w, r, logger, decoder, encoder)
+		wrapper := httpext.NewWrapper(w, r, logger, encoder)
 		var request emailConfirmationRequest
-		err := wrapper.Bind(&request)
+		err := decoder.Decode(r.Body, request)
 		if err != nil {
 			wrapper.BadRequestErr(err)
 			return
@@ -34,7 +34,7 @@ func NewEmailConfirmationHandler(
 		err = cmdHandler.Execute(cmd)
 		if err != nil {
 			if err == InvalidConfirmationError {
-				wrapper.BadRequest()
+				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
 			wrapper.InternalServerError(err)

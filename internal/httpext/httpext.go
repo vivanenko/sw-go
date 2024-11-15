@@ -10,7 +10,6 @@ type Wrapper struct {
 	w       http.ResponseWriter
 	r       *http.Request
 	logger  logging.Logger
-	decoder encoding.Decoder
 	encoder encoding.Encoder
 }
 
@@ -18,18 +17,9 @@ func NewWrapper(
 	w http.ResponseWriter,
 	r *http.Request,
 	logger logging.Logger,
-	decoder encoding.Decoder,
 	encoder encoding.Encoder,
 ) *Wrapper {
-	return &Wrapper{w: w, r: r, logger: logger, decoder: decoder, encoder: encoder}
-}
-
-func (w *Wrapper) Bind(model interface{}) error {
-	return w.decoder.Decode(w.r.Body, model)
-}
-
-func (w *Wrapper) BadRequest() {
-	w.w.WriteHeader(http.StatusBadRequest)
+	return &Wrapper{w: w, r: r, logger: logger, encoder: encoder}
 }
 
 func (w *Wrapper) BadRequestErr(err error) {
