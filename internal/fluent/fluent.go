@@ -51,18 +51,8 @@ func (c *Context[TRequest]) Handle() error {
 	var request TRequest
 	err := c.decoder.Decode(c.request.Body, &request)
 	if err != nil {
-		c.responseWriter.Header().Set("Content-Type", "application/json")
-		c.responseWriter.WriteHeader(http.StatusBadRequest)
 		response := apierr.ErrorResponse{Code: apierr.ErrInvalidBody, Message: "Invalid Body"}
-		bytes, err := c.encoder.Encode(response)
-		if err != nil {
-			return err
-		}
-		_, err = c.responseWriter.Write(bytes)
-		if err != nil {
-			return err
-		}
-		return nil
+		return c.badRequest(response)
 	}
 
 	err = c.validator.Struct(request)
@@ -70,17 +60,7 @@ func (c *Context[TRequest]) Handle() error {
 		errors, ok := err.(validator.ValidationErrors)
 		if ok {
 			response := goplayground.MapValidationError(errors)
-			c.responseWriter.Header().Set("Content-Type", "application/json")
-			c.responseWriter.WriteHeader(http.StatusBadRequest)
-			bytes, err := c.encoder.Encode(response)
-			if err != nil {
-				return err
-			}
-			_, err = c.responseWriter.Write(bytes)
-			if err != nil {
-				return err
-			}
-			return nil
+			return c.badRequest(response)
 		}
 		return err
 	}
@@ -89,18 +69,22 @@ func (c *Context[TRequest]) Handle() error {
 	if err != nil {
 		response, exist := c.errorResponses[err]
 		if exist {
-			c.responseWriter.Header().Set("Content-Type", "application/json")
-			c.responseWriter.WriteHeader(http.StatusBadRequest)
-			bytes, err := c.encoder.Encode(response)
-			if err != nil {
-				return err
-			}
-			_, err = c.responseWriter.Write(bytes)
-			if err != nil {
-				return err
-			}
-			return nil
+			return c.badRequest(response)
 		}
+		return err
+	}
+	return nil
+}
+
+func (c *Context[TRequest]) badRequest(response interface{}) error {
+	c.responseWriter.Header().Set("Content-Type", "application/json")
+	c.responseWriter.WriteHeader(http.StatusBadRequest)
+	bytes, err := c.encoder.Encode(response)
+	if err != nil {
+		return err
+	}
+	_, err = c.responseWriter.Write(bytes)
+	if err != nil {
 		return err
 	}
 	return nil

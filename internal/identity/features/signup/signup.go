@@ -41,7 +41,6 @@ func NewSignUpHandler(
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		w.WriteHeader(http.StatusCreated)
 	}
 }
 
