@@ -6,12 +6,13 @@ import (
 	"net/http"
 	"sw/internal/cqrs"
 	"sw/internal/encoding"
+	"sw/internal/fluent"
 	"sw/internal/identity/mail/confirmation"
 	"sw/internal/logging"
 	"sw/internal/mail"
 )
 
-type resendEmailConfirmationRequest struct {
+type ResendEmailConfirmationRequest struct {
 	Email string `json:"email" validate:"required,max=320,email,exists"`
 }
 
@@ -23,23 +24,15 @@ func NewResendEmailConfirmationHandler(
 	cmdHandler cqrs.CommandHandler[ResendEmailConfirmationCommand],
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var request resendEmailConfirmationRequest
-		err := decoder.Decode(r.Body, &request)
-		if err != nil {
-			// todo: message: Invalid JSON
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
+		err := fluent.NewContext[ResendEmailConfirmationRequest](w, r).
+			WithDecoder(decoder).
+			WithEncoder(encoder).
+			ValidatedBy(validate).
+			WithHandler(func(request ResendEmailConfirmationRequest) error {
+				cmd := ResendEmailConfirmationCommand{Email: request.Email}
+				return cmdHandler.Execute(cmd)
+			}).Handle()
 
-		err = validate.Struct(request)
-		if err != nil {
-			// todo: message: details
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		cmd := ResendEmailConfirmationCommand{Email: request.Email}
-		err = cmdHandler.Execute(cmd)
 		if err != nil {
 			logger.Println(err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

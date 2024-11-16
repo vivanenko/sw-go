@@ -11,6 +11,7 @@ import (
 type Context[TRequest any] struct {
 	responseWriter http.ResponseWriter
 	request        *http.Request
+	errorResponses map[error]apierr.ErrorResponse
 	encoder        encoding.Encoder
 	decoder        encoding.Decoder
 	validator      *validator.Validate
@@ -18,7 +19,7 @@ type Context[TRequest any] struct {
 }
 
 func NewContext[TRequest any](w http.ResponseWriter, r *http.Request) *Context[TRequest] {
-	return &Context[TRequest]{responseWriter: w, request: r}
+	return &Context[TRequest]{responseWriter: w, request: r, errorResponses: map[error]apierr.ErrorResponse{}}
 }
 
 func (c *Context[TRequest]) WithEncoder(encoder encoding.Encoder) *Context[TRequest] {
@@ -33,6 +34,11 @@ func (c *Context[TRequest]) WithDecoder(decoder encoding.Decoder) *Context[TRequ
 
 func (c *Context[TRequest]) ValidatedBy(validator *validator.Validate) *Context[TRequest] {
 	c.validator = validator
+	return c
+}
+
+func (c *Context[TRequest]) OnError(err error, response apierr.ErrorResponse) *Context[TRequest] {
+	c.errorResponses[err] = response
 	return c
 }
 
@@ -79,5 +85,23 @@ func (c *Context[TRequest]) Handle() error {
 		return err
 	}
 
-	return c.handler(request)
+	err = c.handler(request)
+	if err != nil {
+		response, exist := c.errorResponses[err]
+		if exist {
+			c.responseWriter.Header().Set("Content-Type", "application/json")
+			c.responseWriter.WriteHeader(http.StatusBadRequest)
+			bytes, err := c.encoder.Encode(response)
+			if err != nil {
+				return err
+			}
+			_, err = c.responseWriter.Write(bytes)
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+		return err
+	}
+	return nil
 }

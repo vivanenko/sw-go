@@ -5,13 +5,19 @@ import (
 	"errors"
 	"github.com/go-playground/validator/v10"
 	"net/http"
+	"sw/internal/apierr"
 	"sw/internal/cqrs"
 	"sw/internal/encoding"
+	"sw/internal/fluent"
 	"sw/internal/logging"
 	"time"
 )
 
-type emailConfirmationRequest struct {
+const (
+	ErrInvalidEmailConfirmation = "ERR_INVALID_EMAIL_CONFIRMATION"
+)
+
+type EmailConfirmationRequest struct {
 	Token string `json:"token" validate:"required,max=64"`
 }
 
@@ -23,28 +29,20 @@ func NewEmailConfirmationHandler(
 	cmdHandler cqrs.CommandHandler[EmailConfirmationCommand],
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var request emailConfirmationRequest
-		err := decoder.Decode(r.Body, &request)
-		if err != nil {
-			// todo: message: Invalid JSON
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
+		err := fluent.NewContext[EmailConfirmationRequest](w, r).
+			WithDecoder(decoder).
+			WithEncoder(encoder).
+			ValidatedBy(validate).
+			OnError(InvalidConfirmationError, apierr.ErrorResponse{
+				Code:    ErrInvalidEmailConfirmation,
+				Message: "The token is invalid or expired",
+			}).
+			WithHandler(func(request EmailConfirmationRequest) error {
+				cmd := EmailConfirmationCommand{Token: request.Token}
+				return cmdHandler.Execute(cmd)
+			}).Handle()
 
-		err = validate.Struct(request)
 		if err != nil {
-			// todo: message: details
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		cmd := EmailConfirmationCommand{Token: request.Token}
-		err = cmdHandler.Execute(cmd)
-		if err != nil {
-			if err == InvalidConfirmationError {
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
 			logger.Println(err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
