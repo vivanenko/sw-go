@@ -2,10 +2,11 @@ package signup
 
 import (
 	"database/sql"
+	"github.com/go-playground/validator/v10"
 	"net/http"
 	"sw/internal/cqrs"
 	"sw/internal/encoding"
-	"sw/internal/httpext"
+	"sw/internal/fluent"
 	"sw/internal/identity/crypto"
 	"sw/internal/identity/mail/confirmation"
 	"sw/internal/logging"
@@ -13,7 +14,7 @@ import (
 	"time"
 )
 
-type signUpRequest struct {
+type SignUpRequest struct {
 	Email    string `json:"email" validate:"required,max=320,email,not_exist"`
 	Password string `json:"password" validate:"required,min=8,max=64"`
 }
@@ -22,23 +23,25 @@ func NewSignUpHandler(
 	logger logging.Logger,
 	decoder encoding.Decoder,
 	encoder encoding.Encoder,
+	validate *validator.Validate,
 	cmdHandler cqrs.CommandHandler[SignUpCommand],
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		wrapper := httpext.NewWrapper(w, r, logger, encoder)
-		var request signUpRequest
-		err := decoder.Decode(r.Body, request)
-		if err != nil {
-			wrapper.BadRequestErr(err)
-			return
-		}
+		err := fluent.NewContext[SignUpRequest](w, r).
+			WithDecoder(decoder).
+			WithEncoder(encoder).
+			ValidatedBy(validate).
+			WithHandler(func(request SignUpRequest) error {
+				cmd := SignUpCommand{Email: request.Email, Password: request.Password}
+				return cmdHandler.Execute(cmd)
+			}).Handle()
 
-		cmd := SignUpCommand{Email: request.Email, Password: request.Password}
-		err = cmdHandler.Execute(cmd)
 		if err != nil {
-			wrapper.InternalServerError(err)
+			logger.Println(err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
+		w.WriteHeader(http.StatusCreated)
 	}
 }
 

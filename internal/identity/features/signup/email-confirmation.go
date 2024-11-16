@@ -3,10 +3,10 @@ package signup
 import (
 	"database/sql"
 	"errors"
+	"github.com/go-playground/validator/v10"
 	"net/http"
 	"sw/internal/cqrs"
 	"sw/internal/encoding"
-	"sw/internal/httpext"
 	"sw/internal/logging"
 	"time"
 )
@@ -19,14 +19,22 @@ func NewEmailConfirmationHandler(
 	logger logging.Logger,
 	decoder encoding.Decoder,
 	encoder encoding.Encoder,
+	validate *validator.Validate,
 	cmdHandler cqrs.CommandHandler[EmailConfirmationCommand],
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		wrapper := httpext.NewWrapper(w, r, logger, encoder)
 		var request emailConfirmationRequest
-		err := decoder.Decode(r.Body, request)
+		err := decoder.Decode(r.Body, &request)
 		if err != nil {
-			wrapper.BadRequestErr(err)
+			// todo: message: Invalid JSON
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		err = validate.Struct(request)
+		if err != nil {
+			// todo: message: details
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
@@ -37,7 +45,8 @@ func NewEmailConfirmationHandler(
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			wrapper.InternalServerError(err)
+			logger.Println(err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 	}

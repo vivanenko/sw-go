@@ -20,7 +20,6 @@ import (
 	ivalidation "sw/internal/identity/validation"
 	"sw/internal/logging"
 	"sw/internal/mail/console"
-	"sw/internal/validation"
 )
 
 const (
@@ -56,9 +55,9 @@ func main() {
 	if err != nil {
 		logger.Fatal(err)
 	}
-	defaultValidator := validation.NewDefaultValidator(validate)
+	//defaultValidator := validation.NewDefaultValidator(validate)
 	encoder := json.NewEncoder()
-	decoder := json.NewDecoder(defaultValidator)
+	decoder := json.NewDecoder()
 	hasher := crypto.NewDefaultHasher()
 	emailFactory := confirmation.NewFactory()
 	emailer := console.NewEmailer()
@@ -72,11 +71,13 @@ func main() {
 
 	// Web
 	router := http.NewServeMux()
-	router.HandleFunc("POST /signup", signup.NewSignUpHandler(logger, decoder, encoder, signUpCmdHandler))
+	router.HandleFunc("POST /signup",
+		signup.NewSignUpHandler(logger, decoder, encoder, validate, signUpCmdHandler))
 	router.HandleFunc("POST /resend-email-confirmation",
-		signup.NewResendEmailConfirmationHandler(logger, decoder, encoder, resendEmailConfirmationCmdHandler))
+		signup.NewResendEmailConfirmationHandler(logger, decoder, encoder, validate, resendEmailConfirmationCmdHandler))
 	router.HandleFunc("POST /email-confirmation",
-		signup.NewEmailConfirmationHandler(logger, decoder, encoder, emailConfirmationCmdHandler))
+		signup.NewEmailConfirmationHandler(logger, decoder, encoder, validate, emailConfirmationCmdHandler))
+
 	err = http.ListenAndServe(":3000", router)
 	if err != nil {
 		logger.Fatal(err)
