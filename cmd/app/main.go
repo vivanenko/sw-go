@@ -14,6 +14,7 @@ import (
 	"sw/config"
 	"sw/internal/encoding/json"
 	"sw/internal/identity/crypto"
+	"sw/internal/identity/features/signin"
 	"sw/internal/identity/features/signup"
 	"sw/internal/identity/infrastructure/postgresql"
 	"sw/internal/identity/mail/confirmation"
@@ -61,15 +62,19 @@ func main() {
 	hasher := crypto.NewDefaultHasher()
 	emailFactory := confirmation.NewFactory()
 	emailer := console.NewEmailer()
+	// SignUp
 	signUpCmdHandler := signup.NewSignUpCommandHandler(db, hasher, emailFactory, emailer)
 	resendEmailConfirmationCmdHandler := signup.NewResendEmailConfirmationCommandHandler(db, emailFactory, emailer)
 	emailConfirmationCmdHandler := signup.NewEmailConfirmationCommandHandler(db)
+	// SignIn
+	signInCmdHandler := signin.NewSignInCommandHandler(db, hasher)
 
 	// Jobs
 	//confirmationsCleaner := signup.NewConfirmationsCleaner(db, logger)
 	//go confirmationsCleaner.Clean()
 
 	// Web
+	// SignUp
 	router := http.NewServeMux()
 	router.HandleFunc("POST /signup",
 		signup.NewSignUpHandler(logger, decoder, encoder, validate, signUpCmdHandler))
@@ -77,6 +82,8 @@ func main() {
 		signup.NewResendEmailConfirmationHandler(logger, decoder, encoder, validate, resendEmailConfirmationCmdHandler))
 	router.HandleFunc("POST /email-confirmation",
 		signup.NewEmailConfirmationHandler(logger, decoder, encoder, validate, emailConfirmationCmdHandler))
+	// SignIn
+	router.HandleFunc("POST /signin", signin.NewSignInHandler(logger, decoder, encoder, validate, signInCmdHandler))
 
 	err = http.ListenAndServe(":3000", router)
 	if err != nil {
