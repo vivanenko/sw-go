@@ -18,7 +18,7 @@ import (
 	"sw/internal/identity/features/signup"
 	"sw/internal/identity/infrastructure/postgresql"
 	"sw/internal/identity/mail/confirmation"
-	ivalidation "sw/internal/identity/validation"
+	"sw/internal/identity/validation"
 	"sw/internal/logging"
 	"sw/internal/mail/console"
 )
@@ -48,15 +48,15 @@ func main() {
 	}(db)
 	accountRepository := postgresql.NewPgAccountRepository(db)
 	validate := validator.New()
+	err = validate.RegisterValidation("not_exist", validation.NewAccountNotExistValidator(accountRepository, logger))
+	if err != nil {
+		logger.Fatal(err)
+	}
+	err = validate.RegisterValidation("exists", validation.NewAccountExistsValidator(accountRepository, logger))
+	if err != nil {
+		logger.Fatal(err)
+	}
 	customValidator := &CustomValidator{validator: validate}
-	err = validate.RegisterValidation("not_exist", ivalidation.NewAccountNotExistValidator(accountRepository, logger))
-	if err != nil {
-		logger.Fatal(err)
-	}
-	err = validate.RegisterValidation("exists", ivalidation.NewAccountExistsValidator(accountRepository, logger))
-	if err != nil {
-		logger.Fatal(err)
-	}
 	//defaultValidator := validation.NewDefaultValidator(validate)
 	hasher := crypto.NewDefaultHasher()
 	emailFactory := confirmation.NewFactory()
