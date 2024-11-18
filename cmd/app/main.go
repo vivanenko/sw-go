@@ -14,6 +14,7 @@ import (
 	"os"
 	"sw/config"
 	"sw/internal/identity/crypto"
+	"sw/internal/identity/features/me"
 	"sw/internal/identity/features/signin"
 	"sw/internal/identity/features/signup"
 	"sw/internal/identity/infrastructure/postgresql"
@@ -21,6 +22,7 @@ import (
 	"sw/internal/identity/validation"
 	"sw/internal/logging"
 	"sw/internal/mail/console"
+	"sw/internal/middlewares"
 )
 
 const (
@@ -80,10 +82,13 @@ func main() {
 	//	logger.Println(err)
 	//	c.Response().WriteHeader(http.StatusInternalServerError)
 	//}
+	e.Use(middlewares.Authenticate())
+
 	e.POST("/signup", signup.NewSignUpHandler(signUpCmdHandler))
 	e.POST("/resend-email-confirmation", signup.NewResendEmailConfirmationHandler(resendEmailConfirmationCmdHandler))
 	e.POST("/email-confirmation", signup.NewEmailConfirmationHandler(emailConfirmationCmdHandler))
 	e.POST("/signin", signin.NewSignInHandler(signInCmdHandler))
+	e.GET("/me", me.NewMeHandler(), middlewares.Authorize())
 
 	err = e.Start(":3000")
 	if err != nil {
