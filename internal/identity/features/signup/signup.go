@@ -2,14 +2,10 @@ package signup
 
 import (
 	"database/sql"
-	"github.com/go-playground/validator/v10"
-	"net/http"
+	"github.com/labstack/echo/v4"
 	"sw/internal/cqrs"
-	"sw/internal/encoding"
-	"sw/internal/fluent"
 	"sw/internal/identity/crypto"
 	"sw/internal/identity/mail/confirmation"
-	"sw/internal/logging"
 	"sw/internal/mail"
 	"time"
 )
@@ -19,28 +15,19 @@ type SignUpRequest struct {
 	Password string `json:"password" validate:"required,min=8,max=64"`
 }
 
-func NewSignUpHandler(
-	logger logging.Logger,
-	decoder encoding.Decoder,
-	encoder encoding.Encoder,
-	validate *validator.Validate,
-	cmdHandler cqrs.CommandHandler[SignUpCommand],
-) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		err := fluent.NewContext[SignUpRequest](w, r).
-			WithDecoder(decoder).
-			WithEncoder(encoder).
-			ValidatedBy(validate).
-			WithHandler(func(request SignUpRequest) error {
-				cmd := SignUpCommand{Email: request.Email, Password: request.Password}
-				return cmdHandler.Execute(cmd)
-			}).Handle()
-
+func NewSignUpHandler(cmdHandler cqrs.CommandHandler[SignUpCommand]) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		var request SignUpRequest
+		err := c.Bind(&request)
 		if err != nil {
-			logger.Println(err)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
+			return err
 		}
+		err = c.Validate(request)
+		if err != nil {
+			return err
+		}
+		cmd := SignUpCommand{Email: request.Email, Password: request.Password}
+		return cmdHandler.Execute(cmd)
 	}
 }
 

@@ -2,13 +2,9 @@ package signup
 
 import (
 	"database/sql"
-	"github.com/go-playground/validator/v10"
-	"net/http"
+	"github.com/labstack/echo/v4"
 	"sw/internal/cqrs"
-	"sw/internal/encoding"
-	"sw/internal/fluent"
 	"sw/internal/identity/mail/confirmation"
-	"sw/internal/logging"
 	"sw/internal/mail"
 )
 
@@ -17,27 +13,20 @@ type ResendEmailConfirmationRequest struct {
 }
 
 func NewResendEmailConfirmationHandler(
-	logger logging.Logger,
-	decoder encoding.Decoder,
-	encoder encoding.Encoder,
-	validate *validator.Validate,
 	cmdHandler cqrs.CommandHandler[ResendEmailConfirmationCommand],
-) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		err := fluent.NewContext[ResendEmailConfirmationRequest](w, r).
-			WithDecoder(decoder).
-			WithEncoder(encoder).
-			ValidatedBy(validate).
-			WithHandler(func(request ResendEmailConfirmationRequest) error {
-				cmd := ResendEmailConfirmationCommand{Email: request.Email}
-				return cmdHandler.Execute(cmd)
-			}).Handle()
-
+) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		var request ResendEmailConfirmationRequest
+		err := c.Bind(&request)
 		if err != nil {
-			logger.Println(err)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
+			return err
 		}
+		err = c.Validate(request)
+		if err != nil {
+			return err
+		}
+		cmd := ResendEmailConfirmationCommand{Email: request.Email}
+		return cmdHandler.Execute(cmd)
 	}
 }
 

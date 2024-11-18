@@ -6,13 +6,13 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/labstack/echo/v4"
 	_ "github.com/lib/pq"
 	"gopkg.in/yaml.v3"
 	"log"
 	"net/http"
 	"os"
 	"sw/config"
-	"sw/internal/encoding/json"
 	"sw/internal/identity/crypto"
 	"sw/internal/identity/features/signin"
 	"sw/internal/identity/features/signup"
@@ -48,17 +48,16 @@ func main() {
 	}(db)
 	accountRepository := postgresql.NewPgAccountRepository(db)
 	validate := validator.New()
-	err = validate.RegisterValidation("not_exist", ivalidation.NewAccountNotExistValidator(accountRepository))
+	customValidator := &CustomValidator{validator: validate}
+	err = validate.RegisterValidation("not_exist", ivalidation.NewAccountNotExistValidator(accountRepository, logger))
 	if err != nil {
 		logger.Fatal(err)
 	}
-	err = validate.RegisterValidation("exists", ivalidation.NewAccountExistsValidator(accountRepository))
+	err = validate.RegisterValidation("exists", ivalidation.NewAccountExistsValidator(accountRepository, logger))
 	if err != nil {
 		logger.Fatal(err)
 	}
 	//defaultValidator := validation.NewDefaultValidator(validate)
-	encoder := json.NewEncoder()
-	decoder := json.NewDecoder()
 	hasher := crypto.NewDefaultHasher()
 	emailFactory := confirmation.NewFactory()
 	emailer := console.NewEmailer()
@@ -74,21 +73,35 @@ func main() {
 	//go confirmationsCleaner.Clean()
 
 	// Web
-	// SignUp
-	router := http.NewServeMux()
-	router.HandleFunc("POST /signup",
-		signup.NewSignUpHandler(logger, decoder, encoder, validate, signUpCmdHandler))
-	router.HandleFunc("POST /resend-email-confirmation",
-		signup.NewResendEmailConfirmationHandler(logger, decoder, encoder, validate, resendEmailConfirmationCmdHandler))
-	router.HandleFunc("POST /email-confirmation",
-		signup.NewEmailConfirmationHandler(logger, decoder, encoder, validate, emailConfirmationCmdHandler))
-	// SignIn
-	router.HandleFunc("POST /signin", signin.NewSignInHandler(logger, decoder, encoder, validate, signInCmdHandler))
+	e := echo.New()
+	e.Debug = true
+	e.Validator = customValidator
+	//e.HTTPErrorHandler = func(err error, c echo.Context) {
+	//	logger.Println(err)
+	//	c.Response().WriteHeader(http.StatusInternalServerError)
+	//}
+	e.POST("/signup", signup.NewSignUpHandler(signUpCmdHandler))
+	e.POST("/resend-email-confirmation", signup.NewResendEmailConfirmationHandler(resendEmailConfirmationCmdHandler))
+	e.POST("/email-confirmation", signup.NewEmailConfirmationHandler(emailConfirmationCmdHandler))
+	e.POST("/signin", signin.NewSignInHandler(signInCmdHandler))
 
-	err = http.ListenAndServe(":3000", router)
+	err = e.Start(":3000")
 	if err != nil {
 		logger.Fatal(err)
 	}
+}
+
+type CustomValidator struct {
+	validator *validator.Validate
+}
+
+func (cv *CustomValidator) Validate(i interface{}) error {
+	if err := cv.validator.Struct(i); err != nil {
+		// Optionally, you could return the error to give each route more control over the status code
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+		//return err
+	}
+	return nil
 }
 
 func getConfig() (*config.Config, error) {

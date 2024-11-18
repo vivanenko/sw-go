@@ -1,29 +1,35 @@
 package validation
 
 import (
-	v "github.com/go-playground/validator/v10"
-	"log"
+	"github.com/go-playground/validator/v10"
 	"sw/internal/identity/domain"
+	"sw/internal/logging"
 )
 
-func NewAccountNotExistValidator(repository domain.AccountRepository) func(fl v.FieldLevel) bool {
-	return func(fl v.FieldLevel) bool {
+func NewAccountNotExistValidator(
+	repository domain.AccountRepository,
+	logger logging.Logger,
+) func(fl validator.FieldLevel) bool {
+	return func(fl validator.FieldLevel) bool {
 		email := fl.Field().Interface().(string)
 		exists, err := repository.Exists(email)
 		if err != nil {
-			log.Print(err)
+			logger.Println(err)
 			return false
 		}
 		return !exists
 	}
 }
 
-func NewAccountExistsValidator(repository domain.AccountRepository) func(fl v.FieldLevel) bool {
-	return func(fl v.FieldLevel) bool {
+func NewAccountExistsValidator(
+	repository domain.AccountRepository,
+	logger logging.Logger,
+) func(fl validator.FieldLevel) bool {
+	return func(fl validator.FieldLevel) bool {
 		email := fl.Field().Interface().(string)
 		exists, err := repository.Exists(email)
 		if err != nil {
-			log.Print(err)
+			logger.Println(err)
 			return false
 		}
 		return exists

@@ -3,13 +3,10 @@ package signup
 import (
 	"database/sql"
 	"errors"
-	"github.com/go-playground/validator/v10"
+	"github.com/labstack/echo/v4"
 	"net/http"
 	"sw/internal/apierr"
 	"sw/internal/cqrs"
-	"sw/internal/encoding"
-	"sw/internal/fluent"
-	"sw/internal/logging"
 	"time"
 )
 
@@ -21,32 +18,32 @@ type EmailConfirmationRequest struct {
 	Token string `json:"token" validate:"required,max=64"`
 }
 
-func NewEmailConfirmationHandler(
-	logger logging.Logger,
-	decoder encoding.Decoder,
-	encoder encoding.Encoder,
-	validate *validator.Validate,
-	cmdHandler cqrs.CommandHandler[EmailConfirmationCommand],
-) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		err := fluent.NewContext[EmailConfirmationRequest](w, r).
-			WithDecoder(decoder).
-			WithEncoder(encoder).
-			ValidatedBy(validate).
-			OnError(InvalidConfirmationError, apierr.ErrorResponse{
-				Code:    ErrInvalidEmailConfirmation,
-				Message: "The token is invalid or expired",
-			}).
-			WithHandler(func(request EmailConfirmationRequest) error {
-				cmd := EmailConfirmationCommand{Token: request.Token}
-				return cmdHandler.Execute(cmd)
-			}).Handle()
-
+func NewEmailConfirmationHandler(cmdHandler cqrs.CommandHandler[EmailConfirmationCommand]) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		var request EmailConfirmationRequest
+		err := c.Bind(&request)
 		if err != nil {
-			logger.Println(err)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
+			return err
 		}
+		err = c.Validate(request)
+		if err != nil {
+			return err
+		}
+		cmd := EmailConfirmationCommand{Token: request.Token}
+		err = cmdHandler.Execute(cmd)
+		if err != nil {
+			if err == InvalidConfirmationError {
+				err = c.JSON(http.StatusBadRequest, apierr.ErrorResponse{
+					Code:    ErrInvalidEmailConfirmation,
+					Message: "The token is invalid or expired",
+				})
+				if err != nil {
+					return err
+				}
+			}
+			return err
+		}
+		return nil
 	}
 }
 

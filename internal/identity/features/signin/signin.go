@@ -2,13 +2,10 @@ package signin
 
 import (
 	"database/sql"
-	"github.com/go-playground/validator/v10"
+	"github.com/labstack/echo/v4"
 	"net/http"
 	"sw/internal/cqrs"
-	"sw/internal/encoding"
-	"sw/internal/fluent"
 	"sw/internal/identity/crypto"
-	"sw/internal/logging"
 )
 
 type SignInRequest struct {
@@ -21,32 +18,25 @@ type SignInResponse struct {
 }
 
 func NewSignInHandler(
-	logger logging.Logger,
-	decoder encoding.Decoder,
-	encoder encoding.Encoder,
-	validate *validator.Validate,
 	cmdHandler cqrs.CommandHandlerWithResponse[SignInCommand, SignInCommandResponse],
-) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		err := fluent.NewContextWithResponse[SignInRequest, SignInResponse](w, r).
-			WithDecoder(decoder).
-			WithEncoder(encoder).
-			ValidatedBy(validate).
-			WithHandler(func(request SignInRequest) (SignInResponse, error) {
-				cmd := SignInCommand{Email: request.Email, Password: request.Password}
-				cmdResponse, err := cmdHandler.Execute(cmd)
-				if err != nil {
-					return SignInResponse{}, err
-				}
-				response := SignInResponse{Token: cmdResponse.Token}
-				return response, nil
-			}).Handle()
-
+) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		var request SignInRequest
+		err := c.Bind(&request)
 		if err != nil {
-			logger.Println(err)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
+			return err
 		}
+		err = c.Validate(request)
+		if err != nil {
+			return err
+		}
+		cmd := SignInCommand{Email: request.Email, Password: request.Password}
+		cmdResponse, err := cmdHandler.Execute(cmd)
+		if err != nil {
+			return err
+		}
+		response := SignInResponse{Token: cmdResponse.Token}
+		return c.JSON(http.StatusOK, response)
 	}
 }
 
