@@ -8,11 +8,10 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/labstack/echo/v4"
 	_ "github.com/lib/pq"
-	"gopkg.in/yaml.v3"
 	"log"
-	"net/http"
 	"os"
 	"sw/config"
+	"sw/internal/auth"
 	"sw/internal/identity/crypto"
 	"sw/internal/identity/features/me"
 	"sw/internal/identity/features/signin"
@@ -22,7 +21,6 @@ import (
 	"sw/internal/identity/validation"
 	"sw/internal/logging"
 	"sw/internal/mail/console"
-	"sw/internal/middlewares"
 )
 
 const (
@@ -31,12 +29,13 @@ const (
 )
 
 func main() {
-	connectionString := os.Getenv("CONNECTION_STRING")
+	connectionString := os.Getenv("SW_CONNECTION_STRING")
+	secret := []byte(os.Getenv("SW_SECRET"))
 
-	//cfg, err := getConfig()
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
+	cfg, err := config.ReadConfig(appConfigPath)
+	if err != nil {
+		log.Fatal(err)
+	}
 	logger := log.Default()
 	db, err := prepareDatabase(connectionString, migrationsSrc, logger)
 	if err != nil {
@@ -58,8 +57,7 @@ func main() {
 	if err != nil {
 		logger.Fatal(err)
 	}
-	customValidator := &CustomValidator{validator: validate}
-	//defaultValidator := validation.NewDefaultValidator(validate)
+	customValidator := validation.NewCustomValidator(validate)
 	hasher := crypto.NewDefaultHasher()
 	emailFactory := confirmation.NewFactory()
 	emailer := console.NewEmailer()
@@ -68,7 +66,7 @@ func main() {
 	resendEmailConfirmationCmdHandler := signup.NewResendEmailConfirmationCommandHandler(db, emailFactory, emailer)
 	emailConfirmationCmdHandler := signup.NewEmailConfirmationCommandHandler(db)
 	// SignIn
-	signInCmdHandler := signin.NewSignInCommandHandler(db, hasher)
+	signInCmdHandler := signin.NewSignInCommandHandler(cfg.JWT, secret, db, hasher)
 
 	// Jobs
 	//confirmationsCleaner := signup.NewConfirmationsCleaner(db, logger)
@@ -82,53 +80,18 @@ func main() {
 	//	logger.Println(err)
 	//	c.Response().WriteHeader(http.StatusInternalServerError)
 	//}
-	e.Use(middlewares.Authenticate())
+	e.Use(auth.Authentication(secret))
 
 	e.POST("/signup", signup.NewSignUpHandler(signUpCmdHandler))
 	e.POST("/resend-email-confirmation", signup.NewResendEmailConfirmationHandler(resendEmailConfirmationCmdHandler))
 	e.POST("/email-confirmation", signup.NewEmailConfirmationHandler(emailConfirmationCmdHandler))
 	e.POST("/signin", signin.NewSignInHandler(signInCmdHandler))
-	e.GET("/me", me.NewMeHandler(), middlewares.Authorize())
+	e.GET("/me", me.NewMeHandler(), auth.Authorization())
 
 	err = e.Start(":3000")
 	if err != nil {
 		logger.Fatal(err)
 	}
-}
-
-type CustomValidator struct {
-	validator *validator.Validate
-}
-
-func (cv *CustomValidator) Validate(i interface{}) error {
-	if err := cv.validator.Struct(i); err != nil {
-		// Optionally, you could return the error to give each route more control over the status code
-		return echo.NewHTTPError(http.StatusBadRequest, err)
-		//return err
-	}
-	return nil
-}
-
-func getConfig() (*config.Config, error) {
-	file, err := os.Open(appConfigPath)
-	if err != nil {
-		return nil, err
-	}
-	defer func(file *os.File) {
-		err := file.Close()
-		if err != nil {
-			panic(err)
-		}
-	}(file)
-
-	decoder := yaml.NewDecoder(file)
-	cfg := &config.Config{}
-	err = decoder.Decode(&cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	return cfg, nil
 }
 
 func prepareDatabase(connectionString string, migrationsSrc string, logger logging.Logger) (*sql.DB, error) {

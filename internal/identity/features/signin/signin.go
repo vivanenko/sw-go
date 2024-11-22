@@ -6,6 +6,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"sw/config"
 	"sw/internal/apierr"
 	"sw/internal/cqrs"
 	"sw/internal/identity/crypto"
@@ -57,6 +58,8 @@ func NewSignInHandler(
 }
 
 type SignInCommandHandler struct {
+	opt    config.JwtOptions
+	secret []byte
 	db     *sql.DB
 	hasher crypto.Hasher
 }
@@ -72,10 +75,12 @@ type SignInCommandResponse struct {
 }
 
 func NewSignInCommandHandler(
+	opt config.JwtOptions,
+	secret []byte,
 	db *sql.DB,
 	hasher crypto.Hasher,
 ) *SignInCommandHandler {
-	return &SignInCommandHandler{db: db, hasher: hasher}
+	return &SignInCommandHandler{opt: opt, secret: secret, db: db, hasher: hasher}
 }
 
 func (h *SignInCommandHandler) Execute(cmd SignInCommand) (SignInCommandResponse, error) {
@@ -92,20 +97,18 @@ func (h *SignInCommandHandler) Execute(cmd SignInCommand) (SignInCommandResponse
 		return SignInCommandResponse{}, err
 	}
 	if h.hasher.Match(passwordHash, cmd.Password) {
-		// todo: extract to config key and ttls
-		secretKey := []byte("TODO")
 		claims := jwt.MapClaims{
 			"sub":   id,
-			"exp":   time.Now().Add(time.Minute * 30).Unix(),
+			"exp":   time.Now().Add(time.Minute * time.Duration(h.opt.AccessTokenLifetimeMinutes)).Unix(),
 			"email": email,
 		}
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		accessToken, err := token.SignedString(secretKey)
+		accessToken, err := token.SignedString(h.secret)
 		if err != nil {
 			return SignInCommandResponse{}, err
 		}
 		refreshToken := random.String(64)
-		expiresAt := time.Now().UTC().AddDate(0, 0, 90)
+		expiresAt := time.Now().UTC().AddDate(0, 0, h.opt.RefreshTokenLifetimeDays)
 		query = "INSERT INTO refresh_token VALUES (DEFAULT, $1, $2, $3)"
 		_, err = h.db.Exec(query, refreshToken, expiresAt, id)
 		if err != nil {
