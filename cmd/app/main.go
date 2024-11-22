@@ -12,15 +12,10 @@ import (
 	"os"
 	"sw/config"
 	"sw/internal/auth"
-	"sw/internal/identity/crypto"
-	"sw/internal/identity/features/me"
-	"sw/internal/identity/features/signin"
-	"sw/internal/identity/features/signup"
-	"sw/internal/identity/infrastructure/postgresql"
-	"sw/internal/identity/mail/confirmation"
-	"sw/internal/identity/validation"
+	"sw/internal/identity"
 	"sw/internal/logging"
 	"sw/internal/mail/console"
+	"sw/internal/validation"
 )
 
 const (
@@ -29,14 +24,15 @@ const (
 )
 
 func main() {
+	port := os.Getenv("SW_PORT")
 	connectionString := os.Getenv("SW_CONNECTION_STRING")
 	secret := []byte(os.Getenv("SW_SECRET"))
 
+	logger := log.Default()
 	cfg, err := config.ReadConfig(appConfigPath)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
-	logger := log.Default()
 	db, err := prepareDatabase(connectionString, migrationsSrc, logger)
 	if err != nil {
 		logger.Fatal(err)
@@ -47,48 +43,24 @@ func main() {
 			logger.Fatal(err)
 		}
 	}(db)
-	accountRepository := postgresql.NewPgAccountRepository(db)
 	validate := validator.New()
-	err = validate.RegisterValidation("not_exist", validation.NewAccountNotExistValidator(accountRepository, logger))
-	if err != nil {
-		logger.Fatal(err)
-	}
-	err = validate.RegisterValidation("exists", validation.NewAccountExistsValidator(accountRepository, logger))
-	if err != nil {
-		logger.Fatal(err)
-	}
-	customValidator := validation.NewCustomValidator(validate)
-	hasher := crypto.NewDefaultHasher()
-	emailFactory := confirmation.NewFactory()
 	emailer := console.NewEmailer()
-	// SignUp
-	signUpCmdHandler := signup.NewSignUpCommandHandler(db, hasher, emailFactory, emailer)
-	resendEmailConfirmationCmdHandler := signup.NewResendEmailConfirmationCommandHandler(db, emailFactory, emailer)
-	emailConfirmationCmdHandler := signup.NewEmailConfirmationCommandHandler(db)
-	// SignIn
-	signInCmdHandler := signin.NewSignInCommandHandler(cfg.JWT, secret, db, hasher)
 
-	// Jobs
-	//confirmationsCleaner := signup.NewConfirmationsCleaner(db, logger)
-	//go confirmationsCleaner.Clean()
-
-	// Web
 	e := echo.New()
 	e.Debug = true
-	e.Validator = customValidator
+	e.Validator = validation.NewCustomValidator(validate)
 	//e.HTTPErrorHandler = func(err error, c echo.Context) {
 	//	logger.Println(err)
 	//	c.Response().WriteHeader(http.StatusInternalServerError)
 	//}
 	e.Use(auth.Authentication(secret))
 
-	e.POST("/signup", signup.NewSignUpHandler(signUpCmdHandler))
-	e.POST("/resend-email-confirmation", signup.NewResendEmailConfirmationHandler(resendEmailConfirmationCmdHandler))
-	e.POST("/email-confirmation", signup.NewEmailConfirmationHandler(emailConfirmationCmdHandler))
-	e.POST("/signin", signin.NewSignInHandler(signInCmdHandler))
-	e.GET("/me", me.NewMeHandler(), auth.Authorization())
+	err = identity.Initialize(e, logger, validate, cfg, secret, db, emailer)
+	if err != nil {
+		logger.Fatal(err)
+	}
 
-	err = e.Start(":3000")
+	err = e.Start(":" + port)
 	if err != nil {
 		logger.Fatal(err)
 	}

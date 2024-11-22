@@ -15,10 +15,10 @@ type JwtOptions struct {
 	RefreshTokenLifetimeDays   int `yaml:"refresh_token_lifetime_days"`
 }
 
-func ReadConfig(src string) (*Config, error) {
+func ReadConfig(src string) (Config, error) {
 	file, err := os.Open(src)
 	if err != nil {
-		return nil, err
+		return Config{}, err
 	}
 	defer func(file *os.File) {
 		err := file.Close()
@@ -28,10 +28,10 @@ func ReadConfig(src string) (*Config, error) {
 	}(file)
 
 	decoder := yaml.NewDecoder(file)
-	cfg := &Config{}
+	cfg := Config{}
 	err = decoder.Decode(&cfg)
 	if err != nil {
-		return nil, err
+		return Config{}, err
 	}
 
 	return cfg, nil
